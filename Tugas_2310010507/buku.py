@@ -1,6 +1,12 @@
 # buku.py
 from PySide6.QtWidgets import QMainWindow, QTableWidgetItem, QMessageBox
 from PySide6 import QtUiTools
+
+# ===== TAMBAHAN UNTUK PRINT =====
+from PySide6.QtPrintSupport import QPrinter, QPrintDialog, QPrinterInfo
+from PySide6.QtGui import QTextDocument
+# ===============================
+
 import database
 import anggota
 import petugas
@@ -34,28 +40,26 @@ class BukuWindow(QMainWindow):
         self.ui.pushButton_3.clicked.connect(self.hapus_data)
         self.ui.pushButton_4.clicked.connect(self.clear_input)
 
-        # --- Klik baris tabel untuk edit / hapus ---
+        # ===== TOMBOL PRINT (TAMBAHAN) =====
+        self.ui.pushButton_5.clicked.connect(self.print_data)
+        # ==================================
+
+        # --- Klik baris tabel ---
         self.ui.tableWidget.cellClicked.connect(self.isi_form_dari_tabel)
 
         # --- Menu navigasi ---
         try:
-            action_home = self.ui.menuHome.addAction("Home")
-            action_home.triggered.connect(self.open_home)
-            action_buku = self.ui.menuBuku.addAction("Buku")
-            action_buku.triggered.connect(lambda: None)
-            action_anggota = self.ui.menuAnggota.addAction("Anggota")
-            action_anggota.triggered.connect(self.open_anggota)
-            action_petugas = self.ui.menuPetugas.addAction("Petugas")
-            action_petugas.triggered.connect(self.open_petugas)
-            action_peminjaman = self.ui.menuPeminjaman.addAction("Peminjaman")
-            action_peminjaman.triggered.connect(self.open_peminjaman)
+            self.ui.menuHome.addAction("Home").triggered.connect(self.open_home)
+            self.ui.menuBuku.addAction("Buku")
+            self.ui.menuAnggota.addAction("Anggota").triggered.connect(self.open_anggota)
+            self.ui.menuPetugas.addAction("Petugas").triggered.connect(self.open_petugas)
+            self.ui.menuPeminjaman.addAction("Peminjaman").triggered.connect(self.open_peminjaman)
         except Exception as e:
             print("Gagal mengatur menu navigasi:", e)
 
-        # --- Load data awal ---
         self.load_data()
 
-    # ========== Navigasi Form ==========
+    # ========== NAVIGASI ==========
     def open_home(self):
         from form import Main
         self.window = Main()
@@ -77,12 +81,13 @@ class BukuWindow(QMainWindow):
         self.window.show()
         self.close()
 
-    # ========== CRUD Buku ==========
+    # ========== CRUD ==========
     def load_data(self):
         conn = database.get_connection()
         cur = conn.cursor()
         cur.execute("SELECT * FROM buku")
         rows = cur.fetchall()
+
         self.ui.tableWidget.setRowCount(0)
         for row_data in rows:
             row = self.ui.tableWidget.rowCount()
@@ -92,14 +97,13 @@ class BukuWindow(QMainWindow):
         conn.close()
 
     def tambah_data(self):
-        #Validasi: tidak boleh tambah jika input kosong
         if (
             not self.ui.lineEdit_2.text().strip()
             or not self.ui.lineEdit_3.text().strip()
             or not self.ui.lineEdit_4.text().strip()
             or not self.ui.lineEdit_5.text().strip()
         ):
-            QMessageBox.warning(self, "Peringatan", "Semua kolom harus diisi sebelum menambah data!")
+            QMessageBox.warning(self, "Peringatan", "Semua kolom harus diisi!")
             return
 
         data = (
@@ -108,23 +112,21 @@ class BukuWindow(QMainWindow):
             self.ui.lineEdit_4.text(),
             self.ui.lineEdit_5.text(),
         )
-        try:
-            conn = database.get_connection()
-            cur = conn.cursor()
-            cur.execute(
-                "INSERT INTO buku (judul, pengarang, penerbit, tahun_terbit) VALUES (%s, %s, %s, %s)",
-                data
-            )
-            conn.commit()
-            conn.close()
-            self.load_data()
-            self.clear_input()
-            QMessageBox.information(self, "Sukses", "Data buku berhasil ditambahkan.")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Gagal menambah data buku:\n{e}")
+
+        conn = database.get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO buku (judul, pengarang, penerbit, tahun_terbit) VALUES (%s,%s,%s,%s)",
+            data
+        )
+        conn.commit()
+        conn.close()
+
+        self.load_data()
+        self.clear_input()
+        QMessageBox.information(self, "Sukses", "Data buku berhasil ditambahkan.")
 
     def isi_form_dari_tabel(self, row, column):
-        """Ketika user klik baris tabel, isi field input agar bisa diedit/dihapus"""
         self.ui.lineEdit.setText(self.ui.tableWidget.item(row, 0).text())
         self.ui.lineEdit_2.setText(self.ui.tableWidget.item(row, 1).text())
         self.ui.lineEdit_3.setText(self.ui.tableWidget.item(row, 2).text())
@@ -134,7 +136,7 @@ class BukuWindow(QMainWindow):
     def edit_data(self):
         id_buku = self.ui.lineEdit.text()
         if not id_buku:
-            QMessageBox.warning(self, "Peringatan", "Pilih data buku yang ingin diedit terlebih dahulu!")
+            QMessageBox.warning(self, "Peringatan", "Pilih data terlebih dahulu!")
             return
 
         data = (
@@ -144,50 +146,95 @@ class BukuWindow(QMainWindow):
             self.ui.lineEdit_5.text(),
             id_buku,
         )
-        try:
-            conn = database.get_connection()
-            cur = conn.cursor()
-            cur.execute(
-                "UPDATE buku SET judul=%s, pengarang=%s, penerbit=%s, tahun_terbit=%s WHERE id_buku=%s",
-                data
-            )
-            conn.commit()
-            conn.close()
-            self.load_data()
-            QMessageBox.information(self, "Sukses", "Data buku berhasil diperbarui.")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Gagal mengedit data buku:\n{e}")
+
+        conn = database.get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE buku SET judul=%s, pengarang=%s, penerbit=%s, tahun_terbit=%s WHERE id_buku=%s",
+            data
+        )
+        conn.commit()
+        conn.close()
+
+        self.load_data()
+        QMessageBox.information(self, "Sukses", "Data buku berhasil diperbarui.")
 
     def hapus_data(self):
         id_buku = self.ui.lineEdit.text()
         if not id_buku:
-            QMessageBox.warning(self, "Peringatan", "Pilih data buku yang ingin dihapus terlebih dahulu!")
+            QMessageBox.warning(self, "Peringatan", "Pilih data terlebih dahulu!")
             return
 
-        konfirmasi = QMessageBox.question(
-            self, "Konfirmasi Hapus",
-            "Apakah Anda yakin ingin menghapus data ini?",
+        if QMessageBox.question(
+            self,
+            "Konfirmasi Hapus",
+            "Yakin ingin menghapus data ini?",
             QMessageBox.Yes | QMessageBox.No
-        )
-        if konfirmasi == QMessageBox.Yes:
-            try:
-                conn = database.get_connection()
-                cur = conn.cursor()
-                # Hapus data
-                cur.execute("DELETE FROM buku WHERE id_buku=%s", (id_buku,))
-                conn.commit()
+        ) == QMessageBox.Yes:
 
-                cur.execute("ALTER TABLE buku AUTO_INCREMENT = 1")
-                conn.commit()
-                conn.close()
+            conn = database.get_connection()
+            cur = conn.cursor()
+            cur.execute("DELETE FROM buku WHERE id_buku=%s", (id_buku,))
+            conn.commit()
 
-                self.load_data()
-                self.clear_input()
-                QMessageBox.information(self, "Sukses", "Data buku berhasil dihapus.")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Gagal menghapus data buku:\n{e}")
+            cur.execute("ALTER TABLE buku AUTO_INCREMENT = 1")
+            conn.commit()
+            conn.close()
+
+            self.load_data()
+            self.clear_input()
+            QMessageBox.information(self, "Sukses", "Data buku berhasil dihapus.")
 
     def clear_input(self):
-        for i in range(1, 6):
-            field = getattr(self.ui, f"lineEdit_{i}", self.ui.lineEdit)
-            field.clear()
+        self.ui.lineEdit.clear()
+        self.ui.lineEdit_2.clear()
+        self.ui.lineEdit_3.clear()
+        self.ui.lineEdit_4.clear()
+        self.ui.lineEdit_5.clear()
+
+    # ========== FUNGSI PRINT (TAMBAHAN SAJA) ==========
+    def print_data(self):
+        if not QPrinterInfo.availablePrinters():
+            QMessageBox.critical(
+                self,
+                "Printer Tidak Ditemukan",
+                "Tidak ada printer yang tersedia di sistem."
+            )
+            return
+
+        printer = QPrinter(QPrinter.HighResolution)
+        dialog = QPrintDialog(printer, self)
+
+        if dialog.exec() == QPrintDialog.Accepted:
+            html = """
+            <h2 align="center">Data Buku Perpustakaan</h2>
+            <table border="1" cellspacing="0" cellpadding="5" width="100%">
+                <tr>
+                    <th>ID</th>
+                    <th>Judul</th>
+                    <th>Pengarang</th>
+                    <th>Penerbit</th>
+                    <th>Tahun Terbit</th>
+                </tr>
+            """
+
+            for row in range(self.ui.tableWidget.rowCount()):
+                html += "<tr>"
+                for col in range(self.ui.tableWidget.columnCount()):
+                    item = self.ui.tableWidget.item(row, col)
+                    html += f"<td>{item.text() if item else ''}</td>"
+                html += "</tr>"
+
+            html += "</table>"
+
+            document = QTextDocument()
+            document.setHtml(html)
+
+            try:
+                document.print_(printer)  # PySide6 ✔
+            except Exception as e:
+                QMessageBox.critical(
+                    self,
+                    "Gagal Mencetak",
+                    f"Terjadi kesalahan saat mencetak:\n{e}"
+                )
